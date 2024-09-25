@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  docker-status-mqtt:
+    build: .
+    container_name: docker-status-mqtt
+    env_file:
+      - .env
+    restart: always

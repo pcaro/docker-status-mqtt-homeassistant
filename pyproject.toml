@@ -1,0 +1,11 @@
+[project]
+name = "docker-status-mqtt"
+version = "0.1.0"
+description = "publish the status of docker containers to an MQTT broker"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "docker>=7.1.0",
+    "paho-mqtt>=2.1.0",
+    "paramiko>=3.5.0",
+]
