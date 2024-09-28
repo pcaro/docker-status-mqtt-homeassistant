@@ -25,10 +25,12 @@ class DockerMQTT:
     def __init__(
         self,
         docker_manager: DockerManager,
-        prefix="unraid_docker_",
         entity_name="Unraid Docker",
+        prefix=None,
     ):
         self.docker_manager = docker_manager
+        if prefix is None:
+            prefix = entity_name.lower().replace(" ", "_") + "_"
         self.prefix = prefix
 
         self.device_config = {
@@ -88,7 +90,7 @@ class DockerMQTT:
                 command = msg.payload.decode()
                 self.execute_command(command, container_name)
             elif topic.endswith("/config"):
-                if container_name not in self.known_docker_statuses:
+                if container_name not in self.known_docker_statuses and msg.payload:
                     self.delete_entity(container_name)
         except Exception as e:
             logger.error(
@@ -98,16 +100,18 @@ class DockerMQTT:
     def execute_command(self, command, container_name):
         logger.info(f"Comando recibido: {command} para {container_name}")
         if command == "ON":
+            logger.info(f"Iniciando contenedor {container_name}")
+
             self.docker_manager.start_container(container_name)
-            logger.info(f"Contenedor {container_name} iniciado")
         elif command == "OFF":
+            logger.info(f"Deteniendo contenedor {container_name}")
             self.docker_manager.stop_container(container_name)
-            logger.info(f"Contenedor {container_name} detenido")
         else:
             logger.warning(f"Comando desconocido: {command} para {container_name}")
         time.sleep(1)
         container_status = self.docker_manager.get_container_status(container_name)
-        self.update_entity_status(container_name, container_status)
+        if self.docker_manager.is_container_incuded(container_name):
+            self.update_entity_status(container_name, container_status)
         logger.info(f"Estado actualizado para {container_name}: {container_status}")
 
     def connect(self):
@@ -161,6 +165,7 @@ class DockerMQTT:
         logger.debug(f"Configuración publicada para {container_name}")
 
     def delete_entity(self, container_name):
+        self.mqtt_client.publish(self._get_topic(container_name, "config"), "")
         self.mqtt_client.publish(self._get_topic(container_name, ""), "")
         logger.debug(f"Configuración eliminada para {container_name}")
 
@@ -178,11 +183,11 @@ class DockerMQTT:
         return f"homeassistant/switch/{self.prefix}{container_name}/{topic}"
 
 
-def main():
+def main(args):
     logger.info("Iniciando el servicio Docker Status MQTT")
     cfg = config.Config()
     docker_manager = cfg.get_manager()
-    service = DockerMQTT(docker_manager)
+    service = DockerMQTT(docker_manager, entity_name=args.name)
     service.run()
 
 
@@ -193,8 +198,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Docker Status MQTT")
     parser.add_argument("--verbose", action="store_true", help="Activar modo verbose")
+    parser.add_argument("--name", help="Nombre del dispositivo en Home Assistant", default="Unraid Docker")
     args = parser.parse_args()
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
-    main()
+    main(args)

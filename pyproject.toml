@@ -9,3 +9,8 @@ dependencies = [
     "paho-mqtt>=2.1.0",
     "paramiko>=3.5.0",
 ]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.3.3",
+]

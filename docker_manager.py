@@ -1,4 +1,5 @@
 import logging
+import subprocess
 from abc import ABC, abstractmethod
 
 import docker
@@ -8,16 +9,57 @@ logger = logging.getLogger(__name__)
 
 
 class DockerManager(ABC):
-    @abstractmethod
+    def __init__(self, include_only=None, exclude=None):
+        self.include_only = include_only
+        self.exclude = exclude
+
     def get_docker_statuses(self) -> dict[str, str]:
-        pass
+        all_statuses = self.get_all_statuses()
+        if self.include_only:
+            return {k: v for k, v in all_statuses.items() if k in self.include_only}
+        elif self.exclude:
+            return {k: v for k, v in all_statuses.items() if k not in self.exclude}
+        return all_statuses
+
+    def is_container_incuded(self, container_name):
+        if self.include_only:
+            return container_name in self.include_only
+        elif self.exclude:
+            return container_name not in self.exclude
+        return True
 
     @abstractmethod
-    def start_container(self, container_name):
+    def get_all_statuses(self) -> dict[str, str]:
         pass
 
-    @abstractmethod
     def stop_container(self, container_name):
+        if self.exclude and container_name in self.exclude:
+            logger.warning(f"Contenedor {container_name} no se detendrá, está excluido")
+            return
+        if self.include_only and container_name not in self.include_only:
+            logger.warning(
+                f"Contenedor {container_name} no se detendrá, no está incluido"
+            )
+            return
+        self._stop_container(container_name)
+
+    @abstractmethod
+    def _stop_container(self, container_name):
+        pass
+
+    def start_container(self, container_name):
+        if self.exclude and container_name in self.exclude:
+            logger.warning(f"Contenedor {container_name} no se iniciará, está excluido")
+            return
+        if self.include_only and container_name not in self.include_only:
+            logger.warning(
+                f"Contenedor {container_name} no se iniciará, no está incluido"
+            )
+            return
+        self._start_container(container_name)
+
+    @abstractmethod
+    def _start_container(self, container_name):
         pass
 
     def close(self):
@@ -28,10 +70,11 @@ class DockerManager(ABC):
 
 
 class DockerCommandManager(DockerManager):
-    def __init__(self, command_executor):
+    def __init__(self, command_executor, include_only=None, exclude=None):
+        super().__init__(include_only, exclude)
         self.command_executor = command_executor
 
-    def get_docker_statuses(self) -> dict[str, str]:
+    def get_all_statuses(self) -> dict[str, str]:
         """
         Retrieves the status of all Docker containers.
 
@@ -43,18 +86,20 @@ class DockerCommandManager(DockerManager):
         )
         status_dict = {}
         for line in output.splitlines():
-            name, state = line.split(':', 1)
+            name, state = line.split(":", 1)
             status_dict[name] = state
         return status_dict
 
-    def start_container(self, container_name):
+    def _start_container(self, container_name):
         return self.command_executor.run_command(f"docker start {container_name}")
 
-    def stop_container(self, container_name):
+    def _stop_container(self, container_name):
         return self.command_executor.run_command(f"docker stop {container_name}")
 
     def get_container_status(self, container_name):
-        return self.command_executor.run_command(f"docker inspect --format='{{{{.State.Status}}}}' {container_name}")
+        return self.command_executor.run_command(
+            f"docker inspect --format='{{{{.State.Status}}}}' {container_name}"
+        )
 
     def close(self):
         self.command_executor.close()
@@ -64,18 +109,20 @@ class DockerSocketManager(DockerManager):
     """
     DockerSocketManager is a class that manages Docker containers using the Docker API.
     """
-    def __init__(self):
+
+    def __init__(self, include_only=None, exclude=None):
+        super().__init__(include_only, exclude)
         self.client = docker.from_env()
 
-    def get_docker_statuses(self):
+    def get_all_statuses(self):
         containers = self.client.containers.list(all=True)
         return {c.name: c.status for c in containers}
 
-    def start_container(self, container_name):
+    def _start_container(self, container_name):
         container = self.client.containers.get(container_name)
         container.start()
 
-    def stop_container(self, container_name):
+    def _stop_container(self, container_name):
         container = self.client.containers.get(container_name)
         container.stop()
 
@@ -134,7 +181,5 @@ class SSHCommandExecutor(CommandExecutor):
 
 class LocalCommandExecutor(CommandExecutor):
     def run_command(self, command):
-        import subprocess
-
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
         return result.stdout.strip()
