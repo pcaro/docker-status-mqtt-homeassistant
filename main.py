@@ -5,9 +5,8 @@ import sys
 import time
 
 import paho.mqtt.client as mqtt
-import config
 
-from docker_manager import DockerManager
+from config import Config
 
 log_formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -24,18 +23,13 @@ logger.setLevel(logging.INFO)
 class DockerMQTT:
     def __init__(
         self,
-        docker_manager: DockerManager,
-        entity_name="Unraid Docker",
-        prefix=None,
+        config: Config,
     ):
-        self.docker_manager = docker_manager
-        if prefix is None:
-            prefix = entity_name.lower().replace(" ", "_") + "_"
-        self.prefix = prefix
-
+        self.config = config
+        self.prefix = config.entity_prefix
         self.device_config = {
             "identifiers": [f"{self.prefix}containers"],
-            "name": f"{entity_name} Containers",
+            "name": f"{config.entity_name} Containers",
             "model": "Docker Containers",
             "manufacturer": "Docker Container Manager",
         }
@@ -43,9 +37,11 @@ class DockerMQTT:
         self.known_docker_statuses = {}
 
         self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-        self.mqtt_client.username_pw_set(config.MQTT_USER, config.MQTT_PASSWORD)
+        self.mqtt_client.username_pw_set(config.mqtt_user, config.mqtt_password)
         self.mqtt_client.on_connect = self.on_connect
         self.mqtt_client.on_message = self.on_message
+
+        self.docker_manager = config.get_manager()
 
     def run(self):
         try:
@@ -53,7 +49,7 @@ class DockerMQTT:
             self.mqtt_client.loop_start()
             while True:
                 self.update_entities_and_statuses()
-                time.sleep(config.PUBLISH_INTERVAL)
+                time.sleep(self.config.publish_interval)
         except KeyboardInterrupt:
             logger.info("Interrupción de teclado detectada. Cerrando conexiones.")
         except Exception as e:
@@ -76,8 +72,8 @@ class DockerMQTT:
 
     def on_message(self, client, userdata, msg):
         """We receive to messages types:
-            - Reatined config messages, ie, homeassistant entities configuration (first messages on connect)
-            - commands from Home Assistant to start or stop containers (user interaction)
+        - Reatined config messages, ie, homeassistant entities configuration (first messages on connect)
+        - commands from Home Assistant to start or stop containers (user interaction)
         """
         topic = msg.topic
         if self.prefix not in topic:
@@ -116,8 +112,8 @@ class DockerMQTT:
 
     def connect(self):
         try:
-            self.mqtt_client.connect(config.MQTT_URL, config.MQTT_PORT, 60)
-            logger.info(f"Conexión MQTT establecida con {config.MQTT_URL}")
+            self.mqtt_client.connect(self.config.mqtt_server, self.config.mqtt_port, 60)
+            logger.info(f"Conexión MQTT establecida con {self.config.mqtt_server}")
 
         except Exception as e:
             logger.error(f"Error al conectar con MQTT: {str(e)}")
@@ -185,9 +181,7 @@ class DockerMQTT:
 
 def main(args):
     logger.info("Iniciando el servicio Docker Status MQTT")
-    cfg = config.Config()
-    docker_manager = cfg.get_manager()
-    service = DockerMQTT(docker_manager, entity_name=args.name)
+    service = DockerMQTT(config=Config(**vars(args)))
     service.run()
 
 
@@ -198,9 +192,65 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Docker Status MQTT")
     parser.add_argument("--verbose", action="store_true", help="Activar modo verbose")
-    parser.add_argument("--name", help="Nombre del dispositivo en Home Assistant", default="Unraid Docker")
+    parser.add_argument(
+        "--name",
+        dest="entity_name",
+        help="Nombre del dispositivo en Home Assistant",
+        default="Unraid Docker",
+    )
+    parser.add_argument(
+        "--unraid_host", "-H", help="Host de Unraid", default=None,
+    )
+    parser.add_argument(
+        "--unraid_port", "-p", help="Puerto de Unraid", default=None,
+    )
+    parser.add_argument(
+        "--unraid_user", "-u", help="Usuario de Unraid", default=None,
+    )
+    parser.add_argument(
+        "--unraid_password", help="Contraseña de Unraid", default=None,
+    )
+    parser.add_argument(
+        "--mqtt_server", help="URL del broker MQTT", default=None,
+    )
+    parser.add_argument(
+        "--mqtt_port", help="Puerto del broker MQTT", default=None,
+    )
+    parser.add_argument(
+        "--mqtt_user", help="Usuario del broker MQTT", default=None,
+    )
+    parser.add_argument(
+        "--mqtt_password", help="Contraseña del broker MQTT", default=None,
+    )
+    parser.add_argument(
+        "--publish_interval",
+        help="Intervalo de publicación en segundos",
+        default=None,
+    )
+    parser.add_argument(
+        "--exclude_only",
+        help="Contenedores a excluir",
+        default=None,
+    )
+    parser.add_argument(
+        "--include_only",
+        help="Contenedores a incluir",
+        default=None,
+    )
+    parser.add_argument(
+        "--use_cmd_local",
+        help="Usar comandos locales en lugar de SSH",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--entity_prefix",
+        help="Prefijo de los dispositivos en Home Assistant",
+        default=None,
+    )
+
     args = parser.parse_args()
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
+
     main(args)

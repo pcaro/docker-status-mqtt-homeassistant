@@ -50,10 +50,10 @@ cd docker-status-mqtt
 
 The script is configured using environment variables stored in the `.env` file:
 
-- `UNRAID_HOST`: IP address or hostname of the remote Unraid server (optional, for SSH mode).
-- `UNRAID_PORT`: SSH port of the remote Unraid server (default: 22).
-- `UNRAID_USER`: Username for SSH connection.
-- `UNRAID_PASSWORD`: Password for SSH connection.
+- `SSH_HOST`: IP address or hostname of the remote Unraid server (optional, for SSH mode).
+- `SSH_PORT`: SSH port of the remote Unraid server (default: 22).
+- `SSH_USER`: Username for SSH connection.
+- `SSH_PASSWORD`: Password for SSH connection.
 - `MQTT_URL`: IP address or hostname of the MQTT broker.
 - `MQTT_PORT`: Port of the MQTT broker (default: 1883).
 - `MQTT_USER`: Username for MQTT authentication.
