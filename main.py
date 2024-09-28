@@ -190,7 +190,10 @@ if __name__ == "__main__":
     # o en modo SSH
     # --verbose para activar el modo verbose (debug). Esto cambia el loggin a nivel DEBUG
 
-    parser = argparse.ArgumentParser(description="Docker Status MQTT")
+    parser = argparse.ArgumentParser(
+        description="Docker Status MQTT. Only mqtt_server is required. "
+        "You can use environment variables too. Just use capital letters and underscores."
+    )
     parser.add_argument("--verbose", action="store_true", help="Activar modo verbose")
     parser.add_argument(
         "--name",
@@ -199,28 +202,47 @@ if __name__ == "__main__":
         default="Unraid Docker",
     )
     parser.add_argument(
-        "--unraid_host", "-H", help="Host de Unraid", default=None,
+        "--unraid_host",
+        "-H",
+        help="Host de Unraid",
+        default=None,
     )
     parser.add_argument(
-        "--unraid_port", "-p", help="Puerto de Unraid", default=None,
+        "--unraid_port",
+        "-p",
+        help="Puerto de Unraid",
+        default=None,
     )
     parser.add_argument(
-        "--unraid_user", "-u", help="Usuario de Unraid", default=None,
+        "--unraid_user",
+        "-u",
+        help="Usuario de Unraid",
+        default=None,
     )
     parser.add_argument(
-        "--unraid_password", help="Contraseña de Unraid", default=None,
+        "--unraid_password",
+        help="Contraseña de Unraid",
+        default=None,
     )
     parser.add_argument(
-        "--mqtt_server", help="URL del broker MQTT", default=None,
+        "--mqtt_server",
+        help="URL del broker MQTT",
+        default=None,
     )
     parser.add_argument(
-        "--mqtt_port", help="Puerto del broker MQTT", default=None,
+        "--mqtt_port",
+        help="Puerto del broker MQTT",
+        default=None,
     )
     parser.add_argument(
-        "--mqtt_user", help="Usuario del broker MQTT", default=None,
+        "--mqtt_user",
+        help="Usuario del broker MQTT",
+        default=None,
     )
     parser.add_argument(
-        "--mqtt_password", help="Contraseña del broker MQTT", default=None,
+        "--mqtt_password",
+        help="Contraseña del broker MQTT",
+        default=None,
     )
     parser.add_argument(
         "--publish_interval",
