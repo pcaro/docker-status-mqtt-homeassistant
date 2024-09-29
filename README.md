@@ -12,35 +12,19 @@ This was created for my Unraid server, but should work with any Docker host.
 - Supports remote Docker hosts via SSH.
 - Configurable update interval and MQTT credentials.
 
-## Requirements
+## Usage
 
-- Python 3.12+
-- Docker
-- An MQTT broker (like Mosquitto)
-- Optional: SSH access to a remote Docker host
-
-## Installation
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/yourusername/docker-status-mqtt.git
-cd docker-status-mqtt
-```
+You can use the [image hosted on docker hub](https://hub.docker.com/repository/docker/pcarorevuelta/docker-status-mqtt-homeassistant/)
 
 1. Configure:
 
-- Copy the `.env.example` file to `.env` and fill in your MQTT broker details, credentials, and optional SSH settings.
+    Copy the `.env.example` file to `.env` and fill in your MQTT broker details, credentials, and optional SSH settings.
 
-## Usage
-
-1. Build the Docker image:
+2. Run the Docker container using docker or docker-compose:
 
     ```bash
-    docker-compose build
+    docker run -d --name docker-status-mqtt-homeassistant --env-file .env pcarorevuelta/docker-status-mqtt-homeassistant
     ```
-
-2. Run the Docker container:
 
     ```bash
     docker-compose up -d

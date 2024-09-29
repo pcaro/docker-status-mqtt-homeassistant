@@ -1,8 +1,8 @@
 version: '3.8'
 services:
-  docker-status-mqtt:
+  docker-status-mqtt-homeassistant:
     build: .
-    container_name: docker-status-mqtt
+    container_name: docker-status-mqtt-homeassistant
     env_file:
       - .env
     restart: always

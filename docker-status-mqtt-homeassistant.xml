@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container dockerfile="Dockerfile" name="docker-status-mqtt-homeassistant"
+           repository="pcarorevuelta/docker-status-mqtt-homeassistant"
+           registry="https://registry-1.docker.io">
+  <Description>Docker Status MQTT to Home Assistant</Description>
+  <Category>Productivity</Category>
+  <WebUI/>
+  <Environment>
+    <Variable name="MQTT_SERVER" value="" label="MQTT Host" description="IP address or hostname of the MQTT broker"/>
+    <Variable name="MQTT_USER" value="" label="MQTT User" description="Username for MQTT authentication"/>
+    <Variable name="MQTT_PASSWORD" value="" label="MQTT Password" description="Password for MQTT authentication"/>
+
+    <Variable name="SSH_HOST" value="" label="SSH Host" description="IP address or hostname of the remote Unraid server (optional, for SSH mode)"/>
+    <Variable name="SSH_PORT" value="22" label="SSH Port" description="SSH port of the remote Unraid server"/>
+    <Variable name="SSH_USER" value="" label="SSH User" description="Username for SSH connection"/>
+    <Variable name="SSH_PASSWORD" value="" label="SSH Password" description="Password for SSH connection"/>
+
+    <Variable name="PUBLISH_INTERVAL" value="120" label="Publish Interval" description="Interval in seconds for publishing container statuses"/>
+  </Environment>
+  <Networking>
+    <Mode>bridge</Mode>
+  </Networking>
+</Container>
