@@ -23,6 +23,8 @@ dependencies = [
     "docker>=7.1.0",
     "paho-mqtt>=2.1.0",
     "paramiko>=3.5.0",
+    "aiomqtt>=2.3.0",
+    "aiodocker>=0.23.0",
 ]
 
 [project.urls]
@@ -32,6 +34,7 @@ Issues = "https://github.com/pcarorevuelta/docker-status-mqtt-homeassistant/issu
 
 [project.scripts]
 docker-status-mqtt = "main:main"
+docker-status-mqtt-async = "main_async:main"
 
 [build-system]
 requires = ["hatchling"]
