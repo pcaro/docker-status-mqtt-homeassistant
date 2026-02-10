@@ -90,3 +90,38 @@ docker logs docker-status-mqtt-homeassistant
 ## Future Enhancements Priority
 1. Add comprehensive test coverage for main.py and config.py
 2. Async architecture with aiomqtt/aiodocker for better performance
+
+## Contribution Workflow
+To ensure code quality and stability, direct commits to the `main` branch are discouraged. Please follow this workflow:
+
+1.  **Create a Branch**: Create a new branch for your feature or fix.
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+2.  **Develop & Test**: Make your changes and run tests locally.
+    ```bash
+    uv run pytest
+    ```
+3.  **Push & PR**: Push your branch and open a Pull Request (PR) on GitHub.
+    ```bash
+    git push -u origin feature/your-feature-name
+    gh pr create --title "Feature Description" --body "Details..."
+    ```
+4.  **Merge**: Once reviewed and approved (and CI passes), merge the PR into `main`.
+
+## Release Process
+Releases are automated via GitHub Actions when a new tag is pushed. To create a new release:
+
+1.  **Update Version**: Bump the version in `pyproject.toml`.
+2.  **Commit**: Commit the version bump.
+    ```bash
+    git add pyproject.toml
+    git commit -m "Bump version to X.Y.Z"
+    git push
+    ```
+3.  **Create Release**: Use GitHub CLI to create the release and tag.
+    ```bash
+    # This creates the tag and the release on GitHub, triggering the publish workflow
+    gh release create vX.Y.Z --title "vX.Y.Z - Title" --generate-notes
+    ```
+    Alternatively, you can create the tag locally and push it (`git tag vX.Y.Z && git push origin vX.Y.Z`), but using `gh release create` is recommended as it handles both the tag and the GitHub Release entry in one step.
