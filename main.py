@@ -27,6 +27,7 @@ class DockerMQTT:
     ):
         self.config = config
         self.prefix = config.entity_prefix
+        self.availability_topic = f"homeassistant/switch/{self.prefix}availability"
         self.device_config = {
             "identifiers": [f"{self.prefix}containers"],
             "name": f"{config.entity_name} Containers",
@@ -39,6 +40,7 @@ class DockerMQTT:
 
         self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.mqtt_client.username_pw_set(config.mqtt_user, config.mqtt_password)
+        self.mqtt_client.will_set(self.availability_topic, "offline", retain=True)
         self.mqtt_client.on_connect = self.on_connect
         self.mqtt_client.on_message = self.on_message
 
@@ -67,6 +69,7 @@ class DockerMQTT:
 
     def on_connect(self, client, userdata, flags, rc, properties=None):
         logger.info(f"Conectado a MQTT con código {rc}")
+        client.publish(self.availability_topic, "online", retain=True)
         # we should always subscribe from on_connect callback to be sure
         # our subscribed is persisted across reconnections.
         client.subscribe("homeassistant/switch/#")
@@ -176,6 +179,9 @@ class DockerMQTT:
                     "unique_id": f"{self.prefix}{container_name}",
                     "command_topic": self._get_topic(container_name, "command"),
                     "state_topic": self._get_topic(container_name, "state"),
+                    "availability_topic": self.availability_topic,
+                    "payload_available": "online",
+                    "payload_not_available": "offline",
                     "payload_on": "ON",
                     "payload_off": "OFF",
                     "state_on": "ON",
@@ -210,7 +216,9 @@ class DockerMQTT:
         if last_state is None or (last_state.lower() == "running") != (
             container_state.lower() == "running"
         ):
-            self.mqtt_client.publish(self._get_topic(container_name, "state"), state)
+            self.mqtt_client.publish(
+                self._get_topic(container_name, "state"), state, retain=True
+            )
             logger.debug(f"Estado actualizado para {container_name}: {state}")
 
     def _get_topic(self, container_name, topic):
@@ -286,6 +294,9 @@ class DockerMQTT:
                         "state_topic": self._get_sensor_topic(
                             container_name, metric, "state"
                         ),
+                        "availability_topic": self.availability_topic,
+                        "payload_available": "online",
+                        "payload_not_available": "offline",
                         "unit_of_measurement": config["unit"],
                         "icon": config["icon"],
                         "device_class": config.get("device_class"),
@@ -326,7 +337,9 @@ class DockerMQTT:
                 metric not in last_metrics or abs(last_metrics[metric] - value) >= 0.01
             ):  # Threshold for change
                 self.mqtt_client.publish(
-                    self._get_sensor_topic(container_name, metric, "state"), str(value)
+                    self._get_sensor_topic(container_name, metric, "state"),
+                    str(value),
+                    retain=True,
                 )
                 logger.debug(
                     f"Métrica actualizada para {container_name}.{metric}: {value}"

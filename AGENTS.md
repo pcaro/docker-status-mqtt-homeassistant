@@ -52,6 +52,7 @@ docker logs docker-status-mqtt-homeassistant
 - Status: `homeassistant/switch/{entity_prefix}{container_name}/state`
 - Command: `homeassistant/switch/{entity_prefix}{container_name}/set`
 - Config: `homeassistant/switch/{entity_prefix}{container_name}/config`
+- Availability: `homeassistant/switch/{entity_prefix}availability`
 
 ## Deployment
 - Docker Hub: pcarorevuelta/docker-status-mqtt-homeassistant
