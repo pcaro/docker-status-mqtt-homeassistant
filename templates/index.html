@@ -108,7 +108,6 @@
                             <th class="px-6 py-4">Memory</th>
                             <th class="px-6 py-4">Network</th>
                             {% endif %}
-                            <th class="px-6 py-4 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-700">
@@ -149,22 +148,6 @@
                                     <span class="text-xs text-slate-500 ml-2">TX:</span> {{ metrics.get('network_tx', '-') }}
                                 </td>
                             {% endif %}
-                            
-                            <td class="px-6 py-4 text-right">
-                                {% if status.lower() == 'running' %}
-                                <button hx-post="/api/container/{{ name }}/toggle" 
-                                        hx-vals='{"action": "OFF"}'
-                                        class="text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs transition border border-red-500/20">
-                                    Stop
-                                </button>
-                                {% else %}
-                                <button hx-post="/api/container/{{ name }}/toggle" 
-                                        hx-vals='{"action": "ON"}'
-                                        class="text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 px-3 py-1.5 rounded text-xs transition border border-green-500/20">
-                                    Start
-                                </button>
-                                {% endif %}
-                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>

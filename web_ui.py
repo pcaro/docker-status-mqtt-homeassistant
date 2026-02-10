@@ -21,7 +21,7 @@ class WebServer:
         self.app.get("/", response_class=HTMLResponse)(self.read_root)
         self.app.get("/api/status")(self.get_status)
         self.app.post("/api/config")(self.update_config)
-        self.app.post("/api/container/{container_name}/toggle")(self.toggle_container)
+        # self.app.post("/api/container/{container_name}/toggle")(self.toggle_container)
         
     async def start(self):
         # Disable signal handlers in uvicorn as we handle them in main
@@ -58,7 +58,7 @@ class WebServer:
         logger.info(f"Config update requested: {mqtt_server}:{mqtt_port}")
         return {"status": "not_implemented_yet"}
 
-    async def toggle_container(self, container_name: str, action: str = Form(...)):
-        logger.info(f"Web UI requesting {action} for {container_name}")
-        await self.service.execute_command(action, container_name)
-        return {"status": "ok", "container": container_name, "action": action}
+    # async def toggle_container(self, container_name: str, action: str = Form(...)):
+    #     logger.info(f"Web UI requesting {action} for {container_name}")
+    #     await self.service.execute_command(action, container_name)
+    #     return {"status": "ok", "container": container_name, "action": action}
