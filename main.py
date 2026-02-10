@@ -1,12 +1,15 @@
 import argparse
+import asyncio
+import concurrent.futures
 import json
 import logging
+import signal
 import sys
 import time
 
-import paho.mqtt.client as mqtt
-
+import aiomqtt
 from config import Config
+from web_ui import WebServer
 
 log_formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -37,97 +40,165 @@ class DockerMQTT:
 
         self.known_docker_statuses = {}
         self.known_container_metrics = {}  # Track last published metrics
-
-        self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-        self.mqtt_client.username_pw_set(config.mqtt_user, config.mqtt_password)
-        self.mqtt_client.will_set(self.availability_topic, "offline", retain=True)
-        self.mqtt_client.on_connect = self.on_connect
-        self.mqtt_client.on_message = self.on_message
-
         self.docker_manager = config.get_manager()
+        self.shutdown_event = asyncio.Event()
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+        
+        # Initialize Web Server
+        self.web_server = WebServer(self)
+        self.client = None # Client will be set in run()
 
-    def run(self):
+    async def run(self):
+        """Main async loop"""
         try:
-            self.connect()
-            self.mqtt_client.loop_start()
-            while True:
-                self.update_entities_and_statuses()
-                time.sleep(self.config.publish_interval)
-        except KeyboardInterrupt:
-            logger.info("Interrupción de teclado detectada. Cerrando conexiones.")
-        except Exception as e:
-            logger.critical(f"Error crítico en el programa principal: {str(e)}")
-        finally:
-            logger.info("Cerrando conexiones")
-            try:
-                self.docker_manager.close()
-                self.mqtt_client.loop_stop()
-                self.mqtt_client.disconnect()
-            except Exception as e:
-                logger.error(f"Error al cerrar conexiones: {str(e)}")
-            logger.info("Servicio finalizado")
-
-    def on_connect(self, client, userdata, flags, rc, properties=None):
-        logger.info(f"Conectado a MQTT con código {rc}")
-        client.publish(self.availability_topic, "online", retain=True)
-        # we should always subscribe from on_connect callback to be sure
-        # our subscribed is persisted across reconnections.
-        client.subscribe("homeassistant/switch/#")
-
-    def on_message(self, client, userdata, msg):
-        """We receive to messages types:
-        - Reatined config messages, ie, homeassistant entities configuration (first messages on connect)
-        - commands from Home Assistant to start or stop containers (user interaction)
-        """
-        topic = msg.topic
-        if self.prefix not in topic:
-            return
-
-        container_name = topic.split("/")[-2].replace(self.prefix, "")
-
-        try:
-            if topic.endswith("/command"):
-                command = msg.payload.decode()
-                self.execute_command(command, container_name)
-            elif topic.endswith("/config"):
-                if container_name not in self.known_docker_statuses and msg.payload:
-                    self.delete_entity(container_name)
-        except Exception as e:
-            logger.error(
-                f"Error al ejecutar el comando {command} para {container_name}: {str(e)}"
+            logger.info(f"Conectando a MQTT {self.config.mqtt_server}:{self.config.mqtt_port}")
+            
+            # Setup will message for LWT
+            will = aiomqtt.Will(
+                topic=self.availability_topic,
+                payload="offline",
+                qos=1,
+                retain=True
             )
 
-    def execute_command(self, command, container_name):
+            async with aiomqtt.Client(
+                hostname=self.config.mqtt_server,
+                port=self.config.mqtt_port,
+                username=self.config.mqtt_user,
+                password=self.config.mqtt_password,
+                will=will,
+            ) as client:
+                self.client = client
+                logger.info("Conectado a MQTT")
+                
+                # Publish online status
+                await client.publish(self.availability_topic, "online", retain=True)
+                
+                # Subscribe to commands
+                await client.subscribe("homeassistant/switch/#")
+                
+                # Start the command listener task
+                listener_task = asyncio.create_task(self.command_listener())
+                
+                # Start the status updater task
+                updater_task = asyncio.create_task(self.status_updater())
+                
+                # Start Web Server task
+                web_server_task = asyncio.create_task(self.web_server.start())
+                
+                # Wait until shutdown signal
+                await self.shutdown_event.wait()
+                
+                logger.info("Apagando servicios...")
+                listener_task.cancel()
+                updater_task.cancel()
+                # web_server_task needs special handling or just let loop close handle it?
+                # uvicorn handles its own signals, but since we run it in a task, we might cancel it.
+                # However, uvicorn.Server.serve() captures signals by default. 
+                # Since we run it inside our loop, we should check uvicorn config.
+                web_server_task.cancel()
+                
+                # Publish offline status before disconnecting
+                await client.publish(self.availability_topic, "offline", retain=True)
+
+        except aiomqtt.MqttError as e:
+            logger.error(f"Error de conexión MQTT: {e}")
+            # If connection fails, we might want to retry or exit. 
+            # For now, let's exit so the container restarts
+            sys.exit(1)
+        except Exception as e:
+            logger.critical(f"Error crítico: {e}")
+            sys.exit(1)
+        finally:
+            self.docker_manager.close()
+            self.executor.shutdown(wait=False)
+            logger.info("Servicio finalizado")
+
+    async def command_listener(self):
+        """Listen for MQTT messages"""
+        try:
+            async for message in self.client.messages:
+                topic = message.topic.value
+                payload = message.payload.decode() if message.payload else None
+                
+                if self.prefix not in topic:
+                    continue
+
+                container_name = topic.split("/")[-2].replace(self.prefix, "")
+
+                if topic.endswith("/command"):
+                    await self.execute_command(payload, container_name)
+                elif topic.endswith("/config"):
+                    if container_name not in self.known_docker_statuses and payload:
+                        await self.delete_entity(container_name)
+                        
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Error en listener de comandos: {e}")
+
+    async def execute_command(self, command, container_name):
         logger.info(f"Comando recibido: {command} para {container_name}")
+        
+        loop = asyncio.get_running_loop()
+        
         if command == "ON":
             logger.info(f"Iniciando contenedor {container_name}")
-
-            self.docker_manager.start_container(container_name)
+            # Run blocking docker command in executor
+            await loop.run_in_executor(
+                self.executor, 
+                self.docker_manager.start_container, 
+                container_name
+            )
         elif command == "OFF":
             logger.info(f"Deteniendo contenedor {container_name}")
-            self.docker_manager.stop_container(container_name)
+            # Run blocking docker command in executor
+            await loop.run_in_executor(
+                self.executor, 
+                self.docker_manager.stop_container, 
+                container_name
+            )
         else:
             logger.warning(f"Comando desconocido: {command} para {container_name}")
-        time.sleep(1)
-        container_status = self.docker_manager.get_container_status(container_name)
+            return
+
+        # Wait a bit for status change
+        await asyncio.sleep(1)
+        
+        # Get new status (blocking)
+        container_status = await loop.run_in_executor(
+            self.executor,
+            self.docker_manager.get_container_status,
+            container_name
+        )
+        
         if self.docker_manager.is_container_incuded(container_name):
-            self.update_entity_status(container_name, container_status)
+            await self.update_entity_status(container_name, container_status)
         logger.info(f"Estado actualizado para {container_name}: {container_status}")
 
-    def connect(self):
+    async def status_updater(self):
+        """Periodic status update loop"""
         try:
-            self.mqtt_client.connect(self.config.mqtt_server, self.config.mqtt_port, 60)
-            logger.info(f"Conexión MQTT establecida con {self.config.mqtt_server}")
-
+            while not self.shutdown_event.is_set():
+                await self.update_entities_and_statuses()
+                await asyncio.sleep(self.config.publish_interval)
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
-            logger.error(f"Error al conectar con MQTT: {str(e)}")
-            raise
+            logger.error(f"Error en bucle de actualización: {e}")
 
-    def update_entities_and_statuses(self):
+    async def update_entities_and_statuses(self):
         """Update docker entities states and create new entities if needed"""
         logger.info("Publicando estado de los contenedores Docker en MQTT")
+        loop = asyncio.get_running_loop()
+        
         try:
-            docker_statuses = self.docker_manager.get_docker_statuses()
+            # Run blocking docker operations in executor
+            docker_statuses = await loop.run_in_executor(
+                self.executor,
+                self.docker_manager.get_docker_statuses
+            )
+            
             last_docker_statuses = self.known_docker_statuses
 
             running_containers = sorted(
@@ -136,14 +207,16 @@ class DockerMQTT:
             logger.info(f"Running: {','.join(running_containers)}")
 
             for container_name, container_state in docker_statuses.items():
-                self.update_entity_status(container_name, container_state)
+                await self.update_entity_status(container_name, container_state)
+                
                 if container_name not in last_docker_statuses:
-                    self.create_entity(container_name)
+                    await self.create_entity(container_name)
                     if self.config.enable_metrics:
-                        self.create_metric_entities(container_name)
+                        await self.create_metric_entities(container_name)
+                
                 # Update metrics for running containers
                 if container_state.lower() == "running" and self.config.enable_metrics:
-                    self.update_container_metrics(container_name)
+                    await self.update_container_metrics(container_name)
                 elif (
                     container_state.lower() != "running" and self.config.enable_metrics
                 ):
@@ -164,51 +237,46 @@ class DockerMQTT:
         """Update heartbeat file for health checks"""
         try:
             import pathlib
-
             heartbeat_file = pathlib.Path("/tmp/docker-status-mqtt-heartbeat")
             heartbeat_file.touch()
         except Exception as e:
             logger.debug(f"Failed to update heartbeat: {e}")
 
-    def create_entity(self, container_name):
-        self.mqtt_client.publish(
+    async def create_entity(self, container_name):
+        payload = json.dumps({
+            "name": container_name,
+            "unique_id": f"{self.prefix}{container_name}",
+            "command_topic": self._get_topic(container_name, "command"),
+            "state_topic": self._get_topic(container_name, "state"),
+            "availability_topic": self.availability_topic,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "state_on": "ON",
+            "state_off": "OFF",
+            "device": self.device_config,
+        })
+        
+        await self.client.publish(
             self._get_topic(container_name, "config"),
-            json.dumps(
-                {
-                    "name": container_name,
-                    "unique_id": f"{self.prefix}{container_name}",
-                    "command_topic": self._get_topic(container_name, "command"),
-                    "state_topic": self._get_topic(container_name, "state"),
-                    "availability_topic": self.availability_topic,
-                    "payload_available": "online",
-                    "payload_not_available": "offline",
-                    "payload_on": "ON",
-                    "payload_off": "OFF",
-                    "state_on": "ON",
-                    "state_off": "OFF",
-                    "device": self.device_config,
-                }
-            ),
+            payload,
             retain=True,
         )
         logger.debug(f"Configuración publicada para {container_name}")
 
-    def delete_entity(self, container_name):
-        self.mqtt_client.publish(self._get_topic(container_name, "config"), "")
-        self.mqtt_client.publish(self._get_topic(container_name, ""), "")
+    async def delete_entity(self, container_name):
+        await self.client.publish(self._get_topic(container_name, "config"), "")
+        await self.client.publish(self._get_topic(container_name, ""), "")
+        
         if self.config.enable_metrics:
-            self.delete_metric_entities(container_name)
+            await self.delete_metric_entities(container_name)
             # Clean up metrics cache
             if container_name in self.known_container_metrics:
                 del self.known_container_metrics[container_name]
         logger.debug(f"Configuración eliminada para {container_name}")
 
-    def update_entity_status(self, container_name, container_state):
-        """
-        Publish the state of the container to the MQTT broker only if changed
-        Possible docker container states are: created, running, paused, restarting, removing, exited and dead.
-        But we are only interested in running and stopped containers
-        """
+    async def update_entity_status(self, container_name, container_state):
         state = "ON" if container_state.lower() == "running" else "OFF"
 
         # Only publish if state has changed
@@ -216,8 +284,10 @@ class DockerMQTT:
         if last_state is None or (last_state.lower() == "running") != (
             container_state.lower() == "running"
         ):
-            self.mqtt_client.publish(
-                self._get_topic(container_name, "state"), state, retain=True
+            await self.client.publish(
+                self._get_topic(container_name, "state"), 
+                state, 
+                retain=True
             )
             logger.debug(f"Estado actualizado para {container_name}: {state}")
 
@@ -226,12 +296,10 @@ class DockerMQTT:
         return f"homeassistant/switch/{self.prefix}{container_name}/{topic}"
 
     def _get_sensor_topic(self, container_name, metric, topic):
-        """Get MQTT topic for sensor entities"""
         assert topic in ["state", "config", ""]
         return f"homeassistant/sensor/{self.prefix}{container_name}_{metric}/{topic}"
 
-    def create_metric_entities(self, container_name):
-        """Create MQTT sensor entities for container metrics"""
+    async def create_metric_entities(self, container_name):
         metrics_config = {
             "cpu": {
                 "name": f"{container_name} CPU",
@@ -285,39 +353,41 @@ class DockerMQTT:
         }
 
         for metric, config in metrics_config.items():
-            self.mqtt_client.publish(
+            payload = json.dumps({
+                "name": config["name"],
+                "unique_id": f"{self.prefix}{container_name}_{metric}",
+                "state_topic": self._get_sensor_topic(container_name, metric, "state"),
+                "availability_topic": self.availability_topic,
+                "payload_available": "online",
+                "payload_not_available": "offline",
+                "unit_of_measurement": config["unit"],
+                "icon": config["icon"],
+                "device_class": config.get("device_class"),
+                "state_class": config.get("state_class"),
+                "device": self.device_config,
+            })
+            
+            await self.client.publish(
                 self._get_sensor_topic(container_name, metric, "config"),
-                json.dumps(
-                    {
-                        "name": config["name"],
-                        "unique_id": f"{self.prefix}{container_name}_{metric}",
-                        "state_topic": self._get_sensor_topic(
-                            container_name, metric, "state"
-                        ),
-                        "availability_topic": self.availability_topic,
-                        "payload_available": "online",
-                        "payload_not_available": "offline",
-                        "unit_of_measurement": config["unit"],
-                        "icon": config["icon"],
-                        "device_class": config.get("device_class"),
-                        "state_class": config.get("state_class"),
-                        "device": self.device_config,
-                    }
-                ),
+                payload,
                 retain=True,
             )
             logger.debug(f"Metric entity created for {container_name} - {metric}")
 
-    def update_container_metrics(self, container_name):
-        """Update container resource metrics only if changed"""
+    async def update_container_metrics(self, container_name):
         if not self.config.enable_metrics:
             return
 
-        stats = self.docker_manager.get_container_stats(container_name)
+        loop = asyncio.get_running_loop()
+        stats = await loop.run_in_executor(
+            self.executor,
+            self.docker_manager.get_container_stats,
+            container_name
+        )
+        
         if not stats:
             return
 
-        # Get current metrics
         current_metrics = {
             "cpu": round(stats.get("cpu_percent", 0), 2),
             "memory": round(stats.get("memory_percent", 0), 2),
@@ -328,15 +398,13 @@ class DockerMQTT:
             "disk_write": round(stats.get("blkio_write_mb", 0), 2),
         }
 
-        # Get last known metrics for this container
         last_metrics = self.known_container_metrics.get(container_name, {})
 
-        # Only publish metrics that have changed
         for metric, value in current_metrics.items():
             if (
                 metric not in last_metrics or abs(last_metrics[metric] - value) >= 0.01
-            ):  # Threshold for change
-                self.mqtt_client.publish(
+            ):
+                await self.client.publish(
                     self._get_sensor_topic(container_name, metric, "state"),
                     str(value),
                     retain=True,
@@ -345,11 +413,9 @@ class DockerMQTT:
                     f"Métrica actualizada para {container_name}.{metric}: {value}"
                 )
 
-        # Update known metrics
         self.known_container_metrics[container_name] = current_metrics
 
-    def delete_metric_entities(self, container_name):
-        """Delete MQTT sensor entities for container metrics"""
+    async def delete_metric_entities(self, container_name):
         metrics = [
             "cpu",
             "memory",
@@ -360,25 +426,36 @@ class DockerMQTT:
             "disk_write",
         ]
         for metric in metrics:
-            self.mqtt_client.publish(
+            await self.client.publish(
                 self._get_sensor_topic(container_name, metric, "config"), ""
             )
-            self.mqtt_client.publish(
+            await self.client.publish(
                 self._get_sensor_topic(container_name, metric, ""), ""
             )
 
 
+def handle_shutdown(service, loop):
+    logger.info("Recibida señal de parada")
+    service.shutdown_event.set()
+
 def main(args):
-    logger.info("Iniciando el servicio Docker Status MQTT")
+    logger.info("Iniciando el servicio Docker Status MQTT (Async)")
     service = DockerMQTT(config=Config(**vars(args)))
-    service.run()
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Register signal handlers
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: handle_shutdown(service, loop))
+        
+    try:
+        loop.run_until_complete(service.run())
+    finally:
+        loop.close()
 
 
 if __name__ == "__main__":
-    # Vamos a aceptar parámetros de línea de comandos para poder ejecutar el script en modo local
-    # o en modo SSH
-    # --verbose para activar el modo verbose (debug). Esto cambia el loggin a nivel DEBUG
-
     parser = argparse.ArgumentParser(
         description="Docker Status MQTT. Only mqtt_server is required. "
         "You can use environment variables too. Just use capital letters and underscores."

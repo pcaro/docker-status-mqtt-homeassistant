@@ -6,7 +6,7 @@ Monitor and control your Docker containers through Home Assistant via MQTT.
 
 This container publishes the status of your Docker containers to an MQTT broker and creates Home Assistant switch entities for each container. It allows you to:
 
-- **Monitor** container states (running/stopped) in real-time
+- **Monitor** container states (running/stopped) in real-time via MQTT or **Web Dashboard**
 - **Track** container resource metrics (CPU, memory, network, disk I/O)
 - **Control** containers (start/stop) directly from Home Assistant
 - **Filter** which containers to monitor using include/exclude lists
@@ -14,6 +14,12 @@ This container publishes the status of your Docker containers to an MQTT broker 
 - **Connect** to local or remote Docker hosts via SSH
 
 Originally created for Unraid servers but works with any Docker host.
+
+### Web Dashboard
+
+A built-in Web UI is available on port **8080** to visualize the status of containers, MQTT connection, and perform basic actions.
+
+![Web UI Dashboard](https://raw.githubusercontent.com/pcaro/docker-status-mqtt-homeassistant/main/dashboard-screenshot.png)
 
 ### Multi-Architecture Support
 
@@ -70,6 +76,7 @@ docker run -d \
 docker run -d \
   --name docker-status-mqtt \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 8080:8080 \
   -e MQTT_SERVER=192.168.1.100 \
   -e MQTT_USER=homeassistant \
   -e MQTT_PASSWORD=mypassword \
@@ -81,6 +88,7 @@ docker run -d \
 docker run -d \
   --name docker-status-mqtt \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 8080:8080 \
   -e MQTT_SERVER=192.168.1.100 \
   -e ENABLE_METRICS=true \
   pcarorevuelta/docker-status-mqtt-homeassistant
@@ -90,6 +98,7 @@ docker run -d \
 ```bash
 docker run -d \
   --name docker-status-mqtt \
+  -p 8080:8080 \
   -e SSH_HOST=192.168.1.50 \
   -e SSH_USER=root \
   -e SSH_PASSWORD=rootpassword \
@@ -105,6 +114,7 @@ docker run -d \
 docker run -d \
   --name docker-status-mqtt \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 8080:8080 \
   -e MQTT_SERVER=192.168.1.100 \
   -e INCLUDE_ONLY=plex,sonarr,radarr \
   pcarorevuelta/docker-status-mqtt-homeassistant
@@ -113,6 +123,7 @@ docker run -d \
 docker run -d \
   --name docker-status-mqtt \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 8080:8080 \
   -e MQTT_SERVER=192.168.1.100 \
   -e EXCLUDE_ONLY=watchtower,portainer \
   pcarorevuelta/docker-status-mqtt-homeassistant
@@ -126,6 +137,8 @@ services:
     image: pcarorevuelta/docker-status-mqtt-homeassistant
     container_name: docker-status-mqtt
     restart: unless-stopped
+    ports:
+      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:

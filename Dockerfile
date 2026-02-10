@@ -17,4 +17,5 @@ HEALTHCHECK --interval=60s --timeout=30s --start-period=10s --retries=3 \
     CMD uv run healthcheck.py
 
 # Run the application
+EXPOSE 8080
 CMD ["uv", "run", "main.py"]

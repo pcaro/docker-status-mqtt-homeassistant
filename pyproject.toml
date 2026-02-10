@@ -23,6 +23,11 @@ dependencies = [
     "docker>=7.1.0",
     "paho-mqtt>=2.1.0",
     "paramiko>=3.5.0",
+    "aiomqtt>=2.0.0",
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "jinja2>=3.1.3",
+    "python-multipart>=0.0.9",
 ]
 
 [project.urls]
@@ -40,7 +45,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.3.3",
 ]
