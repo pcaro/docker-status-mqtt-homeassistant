@@ -52,6 +52,7 @@ docker run -d \
 | `MQTT_PASSWORD` | MQTT password | - | No |
 | `MQTT_PORT` | MQTT broker port | 1883 | No |
 | `PUBLISH_INTERVAL` | Status update interval (seconds) | 60 | No |
+| `WEB_PORT` | Port for the Web UI | 8080 | No |
 | `INCLUDE_ONLY` | Comma-separated container names to monitor | - | No |
 | `EXCLUDE_ONLY` | Comma-separated container names to exclude | - | No |
 | `ENABLE_METRICS` | Enable container metrics (CPU, memory, network, disk) | false | No |

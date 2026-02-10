@@ -23,6 +23,7 @@ This project monitors Docker containers and publishes their status to MQTT for H
 - SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD: For remote Docker access
 - MQTT_SERVER, MQTT_PORT, MQTT_USER, MQTT_PASSWORD: MQTT broker settings
 - PUBLISH_INTERVAL: Status update frequency (default: 60s)
+- WEB_PORT: Web UI port (default: 8080)
 - INCLUDE_ONLY: Comma-separated list of containers to monitor
 - EXCLUDE_ONLY: Comma-separated list of containers to ignore
 - ENABLE_METRICS: Enable container resource metrics (CPU, memory, network, disk)

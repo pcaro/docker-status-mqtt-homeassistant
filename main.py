@@ -45,7 +45,7 @@ class DockerMQTT:
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
         
         # Initialize Web Server
-        self.web_server = WebServer(self)
+        self.web_server = WebServer(self, port=self.config.web_port)
         self.client = None # Client will be set in run()
 
     async def run(self):
@@ -539,6 +539,11 @@ if __name__ == "__main__":
         "--enable_metrics",
         help="Habilitar métricas de contenedores (CPU, memoria, red, disco)",
         action="store_true",
+    )
+    parser.add_argument(
+        "--web_port",
+        help="Puerto para el servidor web",
+        default=None,
     )
 
     args = parser.parse_args()

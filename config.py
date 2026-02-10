@@ -26,6 +26,7 @@ class Config:
         entity_prefix=None,
         verbose=False,
         enable_metrics=False,
+        web_port=None,
     ):
         self.unraid_host = unraid_host or os.getenv("SSH_HOST")
         self.unraid_port = int(unraid_port or os.getenv("SSH_PORT", 22))
@@ -38,6 +39,7 @@ class Config:
         self.publish_interval = int(
             publish_interval or os.getenv("PUBLISH_INTERVAL", 60)
         )
+        self.web_port = int(web_port or os.getenv("WEB_PORT", 8080))
         exclude_only = exclude_only or os.getenv("EXCLUDE_ONLY")
         if exclude_only:
             self.exclude_only = exclude_only.split(",")
