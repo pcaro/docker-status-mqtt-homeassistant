@@ -21,6 +21,7 @@ class WebServer:
         self.app.get("/", response_class=HTMLResponse)(self.read_root)
         self.app.get("/api/status")(self.get_status)
         self.app.post("/api/config")(self.update_config)
+        self.app.post("/api/container/{container_name}/update")(self.update_container_status)
         # self.app.post("/api/container/{container_name}/toggle")(self.toggle_container)
         
     async def start(self):
@@ -62,3 +63,30 @@ class WebServer:
     #     logger.info(f"Web UI requesting {action} for {container_name}")
     #     await self.service.execute_command(action, container_name)
     #     return {"status": "ok", "container": container_name, "action": action}
+
+    async def update_container_status(self, container_name: str):
+        """Force update of a specific container's status"""
+        logger.info(f"Web UI requesting status update for {container_name}")
+        
+        # Get status
+        loop = asyncio.get_running_loop()
+        container_status = await loop.run_in_executor(
+            self.service.executor,
+            self.service.docker_manager.get_container_status,
+            container_name
+        )
+        
+        # Update MQTT
+        if self.service.docker_manager.is_container_incuded(container_name):
+            await self.service.update_entity_status(container_name, container_status)
+            
+            # If running and metrics enabled, update metrics too
+            if container_status.lower() == "running" and self.service.config.enable_metrics:
+                await self.service.update_container_metrics(container_name)
+
+        return {
+            "status": "ok", 
+            "container": container_name, 
+            "state": container_status,
+            "metrics": self.service.known_container_metrics.get(container_name, {})
+        }

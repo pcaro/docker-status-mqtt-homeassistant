@@ -108,6 +108,7 @@
                             <th class="px-6 py-4">Memory</th>
                             <th class="px-6 py-4">Network</th>
                             {% endif %}
+                            <th class="px-6 py-4 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-700">
@@ -148,6 +149,15 @@
                                     <span class="text-xs text-slate-500 ml-2">TX:</span> {{ metrics.get('network_tx', '-') }}
                                 </td>
                             {% endif %}
+                            
+                            <td class="px-6 py-4 text-right">
+                                <button hx-post="/api/container/{{ name }}/update"
+                                        hx-swap="none"
+                                        class="text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded text-xs transition border border-blue-500/20 group relative"
+                                        title="Check status & Update MQTT">
+                                    <i class="fa-solid fa-rotate group-active:animate-spin"></i> Update
+                                </button>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
