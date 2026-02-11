@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker Status MQTT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <i class="fa-brands fa-docker text-blue-500 text-2xl"></i>
+            <h1 class="font-bold text-xl">Docker Status MQTT</h1>
+        </div>
+        <div class="flex gap-4 text-sm">
+            <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
+                <span>System Online</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-8">
+        
+        <!-- Status Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- MQTT Status -->
+            <div class="bg-slate-800 rounded-lg p-6 border border-slate-700">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <p class="text-slate-400 text-sm">MQTT Broker</p>
+                        <h3 class="text-lg font-semibold">{{ config.mqtt_server }}:{{ config.mqtt_port }}</h3>
+                    </div>
+                    <div class="bg-slate-700 p-2 rounded text-blue-400">
+                        <i class="fa-solid fa-network-wired"></i>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 text-sm">
+                    {% if service.client %}
+                    <span class="text-green-400"><i class="fa-solid fa-check-circle"></i> Conectado</span>
+                    {% else %}
+                    <span class="text-red-400"><i class="fa-solid fa-times-circle"></i> Desconectado</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Docker Mode -->
+            <div class="bg-slate-800 rounded-lg p-6 border border-slate-700">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <p class="text-slate-400 text-sm">Docker Connection</p>
+                        <h3 class="text-lg font-semibold capitalize">{{ config.mode() }} Mode</h3>
+                    </div>
+                    <div class="bg-slate-700 p-2 rounded text-blue-400">
+                        <i class="fa-brands fa-docker"></i>
+                    </div>
+                </div>
+                <div class="text-sm text-slate-400">
+                    {% if config.mode() == 'ssh' %}
+                    {{ config.unraid_host }}
+                    {% elif config.mode() == 'local' %}
+                    Local Command
+                    {% else %}
+                    /var/run/docker.sock
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Entities -->
+            <div class="bg-slate-800 rounded-lg p-6 border border-slate-700">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <p class="text-slate-400 text-sm">Monitored Containers</p>
+                        <h3 class="text-lg font-semibold">{{ service.known_docker_statuses|length }} Containers</h3>
+                    </div>
+                    <div class="bg-slate-700 p-2 rounded text-blue-400">
+                        <i class="fa-solid fa-box-open"></i>
+                    </div>
+                </div>
+                <div class="text-sm text-slate-400">
+                    Update Interval: {{ config.publish_interval }}s
+                </div>
+            </div>
+        </div>
+
+        <!-- Containers Table -->
+        <div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+            <div class="p-6 border-b border-slate-700 flex justify-between items-center">
+                <h2 class="text-lg font-bold">Containers</h2>
+                <button class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition" 
+                        onclick="window.location.reload()">
+                    <i class="fa-solid fa-sync mr-2"></i> Refresh
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-700/50 text-slate-400 text-sm">
+                        <tr>
+                            <th class="px-6 py-4">Name</th>
+                            <th class="px-6 py-4">Status</th>
+                            {% if config.enable_metrics %}
+                            <th class="px-6 py-4">CPU</th>
+                            <th class="px-6 py-4">Memory</th>
+                            <th class="px-6 py-4">Network</th>
+                            {% endif %}
+                            <th class="px-6 py-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-700">
+                        {% for name, status in service.known_docker_statuses.items() %}
+                        <tr class="hover:bg-slate-700/30 transition">
+                            <td class="px-6 py-4 font-medium">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-slate-300">
+                                        <i class="fa-brands fa-docker"></i>
+                                    </div>
+                                    {{ name }}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                {% if status.lower() == 'running' %}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                                    Running
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                                    {{ status }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            
+                            {% if config.enable_metrics %}
+                                {% set metrics = service.known_container_metrics.get(name, {}) %}
+                                <td class="px-6 py-4 font-mono text-sm text-slate-300">
+                                    {{ metrics.get('cpu', '-') }}%
+                                </td>
+                                <td class="px-6 py-4 font-mono text-sm text-slate-300">
+                                    {{ metrics.get('memory_usage', '-') }} MB
+                                </td>
+                                <td class="px-6 py-4 font-mono text-sm text-slate-300">
+                                    <span class="text-xs text-slate-500">RX:</span> {{ metrics.get('network_rx', '-') }}
+                                    <span class="text-xs text-slate-500 ml-2">TX:</span> {{ metrics.get('network_tx', '-') }}
+                                </td>
+                            {% endif %}
+                            
+                            <td class="px-6 py-4 text-right">
+                                <button hx-post="/api/container/{{ name }}/update"
+                                        hx-swap="none"
+                                        class="text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded text-xs transition border border-blue-500/20 group relative"
+                                        title="Check status & Update MQTT">
+                                    <i class="fa-solid fa-rotate group-active:animate-spin"></i> Update
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+                {% if not service.known_docker_statuses %}
+                <div class="p-8 text-center text-slate-500">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-3"></i>
+                    <p>Waiting for first status update...</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <footer class="text-center text-slate-500 text-sm py-8">
+        Docker Status MQTT v0.4.3
+    </footer>
+
+</body>
+</html>

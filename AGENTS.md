@@ -4,12 +4,14 @@
 This project monitors Docker containers and publishes their status to MQTT for Home Assistant integration. It supports SSH, Docker socket, and local command execution modes.
 
 ## Architecture
-- **main.py**: Core application with DockerMQTT class
+- **main.py**: Core application with DockerMQTT class (Asyncio + AIOMQTT)
+- **web_ui.py**: FastAPI web interface
 - **docker_manager.py**: Abstract base with three implementations (Socket/Command/SSH)
 - **config.py**: Configuration management with env vars and CLI args
 - **test_docker_manager.py**: Unit tests (only for docker_manager currently)
 
 ## Key Features
+- **Web UI**: Dashboard at port 8080 to monitor status and logs.
 - Monitors container status (running/stopped)
 - Tracks container resource metrics (CPU, memory, network, disk I/O) with ENABLE_METRICS
 - Creates Home Assistant switch entities via MQTT auto-discovery
@@ -21,6 +23,7 @@ This project monitors Docker containers and publishes their status to MQTT for H
 - SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD: For remote Docker access
 - MQTT_SERVER, MQTT_PORT, MQTT_USER, MQTT_PASSWORD: MQTT broker settings
 - PUBLISH_INTERVAL: Status update frequency (default: 60s)
+- WEB_PORT: Web UI port (default: 8080)
 - INCLUDE_ONLY: Comma-separated list of containers to monitor
 - EXCLUDE_ONLY: Comma-separated list of containers to ignore
 - ENABLE_METRICS: Enable container resource metrics (CPU, memory, network, disk)
