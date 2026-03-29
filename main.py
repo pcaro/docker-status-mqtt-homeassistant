@@ -129,7 +129,10 @@ class DockerMQTT:
                 if topic.endswith("/command"):
                     await self.execute_command(payload, container_name)
                 elif topic.endswith("/config"):
-                    if container_name not in self.known_docker_statuses and payload:
+                    # Only delete if we are sure it's an entity we should manage but it's no longer in docker
+                    # Wait for first full status update to be sure
+                    if self.known_docker_statuses and container_name not in self.known_docker_statuses and payload:
+                        logger.info(f"Limpiando entidad huérfana en HA: {container_name}")
                         await self.delete_entity(container_name)
                         
         except asyncio.CancelledError:
@@ -172,8 +175,17 @@ class DockerMQTT:
             container_name
         )
         
+        # Strip potential whitespace
+        if container_status:
+            container_status = container_status.strip()
+
         if self.docker_manager.is_container_incuded(container_name):
+            # Update known status BEFORE calling update_entity_status to avoid it thinking nothing changed
+            # But wait, update_entity_status uses known_docker_statuses as the OLD state.
+            # So we should update it AFTER.
             await self.update_entity_status(container_name, container_status)
+            self.known_docker_statuses[container_name] = container_status
+            
         logger.info(f"Estado actualizado para {container_name}: {container_status}")
 
     async def status_updater(self):
@@ -199,13 +211,14 @@ class DockerMQTT:
                 self.docker_manager.get_docker_statuses
             )
             
-            last_docker_statuses = self.known_docker_statuses
+            last_docker_statuses = self.known_docker_statuses.copy()
 
             running_containers = sorted(
                 [c for c in docker_statuses if docker_statuses[c].lower() == "running"]
             )
             logger.info(f"Running: {','.join(running_containers)}")
 
+            # Update existing and new containers
             for container_name, container_state in docker_statuses.items():
                 await self.update_entity_status(container_name, container_state)
                 
@@ -224,8 +237,17 @@ class DockerMQTT:
                     if container_name in self.known_container_metrics:
                         del self.known_container_metrics[container_name]
 
+            # Handle containers that disappeared from Docker
+            for container_name in last_docker_statuses:
+                if container_name not in docker_statuses:
+                    logger.info(f"Contenedor {container_name} ya no está presente, marcando como OFF")
+                    await self.update_entity_status(container_name, "exited")
+                    # Also delete entity from HA after a while? 
+                    # For now just mark as OFF so the switch reflects reality
+
             # Update known statuses after processing all containers
             self.known_docker_statuses = docker_statuses
+
 
             # Update heartbeat file for health check
             self._update_heartbeat()
@@ -277,19 +299,29 @@ class DockerMQTT:
         logger.debug(f"Configuración eliminada para {container_name}")
 
     async def update_entity_status(self, container_name, container_state):
+        if not container_state:
+            return
+            
+        container_state = container_state.strip()
         state = "ON" if container_state.lower() == "running" else "OFF"
 
         # Only publish if state has changed
         last_state = self.known_docker_statuses.get(container_name)
-        if last_state is None or (last_state.lower() == "running") != (
+        
+        state_changed = last_state is None or (last_state.lower() == "running") != (
             container_state.lower() == "running"
-        ):
+        )
+        
+        if state_changed:
+            topic = self._get_topic(container_name, "state")
+            logger.info(f"Publicando estado para {container_name}: {state} en {topic}")
             await self.client.publish(
-                self._get_topic(container_name, "state"), 
+                topic, 
                 state, 
                 retain=True
             )
-            logger.debug(f"Estado actualizado para {container_name}: {state}")
+        else:
+            logger.debug(f"Estado sin cambios para {container_name}: {state}")
 
     def _get_topic(self, container_name, topic):
         assert topic in ["state", "command", "config", ""]
